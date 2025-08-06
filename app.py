@@ -1,53 +1,111 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from sklearn.datasets import make_regression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import RFE
+from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
 
-def main():
-    st.title("Random Forest with RFE Feature Selection")
+# Simulated dataset creation
+def create_data():
+    np.random.seed(42)
+    n = 500
+    data = {
+        'Experience': np.random.randint(0, 20, n),
+        'Education': np.random.choice(['High School', 'Bachelors', 'Masters', 'PhD'], n),
+        'Job Role': np.random.choice(['Developer', 'Data Scientist', 'Manager', 'Analyst'], n),
+        'City': np.random.choice(['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad'], n),
+        'Company Rating': np.round(np.random.uniform(2.5, 5.0, n), 1),
+    }
 
-    # Generate synthetic regression data
-    X, y = make_regression(n_samples=1000, n_features=20, noise=0.1, random_state=42)
-    feature_names = [f'Feature_{i}' for i in range(X.shape[1])]
-    df = pd.DataFrame(X, columns=feature_names)
-    df['Target'] = y
+    df = pd.DataFrame(data)
 
-    st.subheader("Synthetic Dataset Preview")
-    st.write(df.head())
+    # Generate Salary with some logic
+    base_salary = 25000
+    df['Salary'] = base_salary + \
+                   df['Experience'] * 2000 + \
+                   df['Company Rating'] * 3000 + \
+                   df['Education'].map({
+                       'High School': 0,
+                       'Bachelors': 5000,
+                       'Masters': 10000,
+                       'PhD': 15000
+                   }) + \
+                   df['Job Role'].map({
+                       'Developer': 5000,
+                       'Data Scientist': 10000,
+                       'Manager': 8000,
+                       'Analyst': 6000
+                   }) + \
+                   np.random.normal(0, 2000, n)
+    return df
 
-    # Select number of features to keep
-    n_select = st.slider("Select number of features to keep", min_value=1, max_value=20, value=10)
+# Encode categorical columns
+def preprocess(df):
+    le = LabelEncoder()
+    df['Education'] = le.fit_transform(df['Education'])
+    df['Job Role'] = le.fit_transform(df['Job Role'])
+    df['City'] = le.fit_transform(df['City'])
+    return df
 
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Train RFE + RF Model
+@st.cache_resource
+def train_model():
+    df = create_data()
+    df = preprocess(df)
 
-    # Model
+    X = df.drop('Salary', axis=1)
+    y = df['Salary']
+
     model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rfe = RFE(estimator=model, n_features_to_select=4)
+    rfe.fit(X, y)
 
-    # RFE
-    rfe = RFE(estimator=model, n_features_to_select=n_select)
-    rfe.fit(X_train, y_train)
+    selected_features = X.columns[rfe.support_]
+    model.fit(X[selected_features], y)
 
-    selected_features = np.array(feature_names)[rfe.support_]
-    st.subheader("Selected Features")
-    st.write(selected_features)
+    return model, selected_features, df
 
-    # Predict with selected features
-    X_train_rfe = rfe.transform(X_train)
-    X_test_rfe = rfe.transform(X_test)
-    model.fit(X_train_rfe, y_train)
-    y_pred = model.predict(X_test_rfe)
+# Main Streamlit app
+def main():
+    st.title("💼 Salary Prediction App (Random Forest + RFE)")
 
-    # Evaluation
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-    st.subheader("Model Performance")
-    st.write(f"Mean Squared Error: {mse:.2f}")
-    st.write(f"R² Score: {r2:.2f}")
+    model, selected_features, df = train_model()
+
+    st.sidebar.header("📋 Enter Candidate Details")
+
+    user_input = {}
+
+    if 'Experience' in selected_features:
+        user_input['Experience'] = st.sidebar.slider("Years of Experience", 0, 30, 2)
+
+    if 'Education' in selected_features:
+        education = st.sidebar.selectbox("Education Level", ['High School', 'Bachelors', 'Masters', 'PhD'])
+        user_input['Education'] = {'High School': 0, 'Bachelors': 1, 'Masters': 2, 'PhD': 3}[education]
+
+    if 'Job Role' in selected_features:
+        job_role = st.sidebar.selectbox("Job Role", ['Developer', 'Data Scientist', 'Manager', 'Analyst'])
+        user_input['Job Role'] = {'Developer': 0, 'Data Scientist': 1, 'Manager': 2, 'Analyst': 3}[job_role]
+
+    if 'City' in selected_features:
+        city = st.sidebar.selectbox("City", ['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad'])
+        user_input['City'] = {'Delhi': 0, 'Mumbai': 1, 'Bangalore': 2, 'Hyderabad': 3}[city]
+
+    if 'Company Rating' in selected_features:
+        user_input['Company Rating'] = st.sidebar.slider("Company Rating", 2.5, 5.0, 4.0, step=0.1)
+
+    # Convert input to dataframe
+    input_df = pd.DataFrame([user_input])
+
+    st.subheader("🧪 Selected Features for Prediction")
+    st.write(selected_features.tolist())
+
+    if st.button("Predict Salary 💰"):
+        prediction = model.predict(input_df[selected_features])[0]
+        st.success(f"💸 Estimated Salary: ₹{int(prediction):,}")
+
+    st.subheader("📊 Sample of Training Data")
+    st.write(df.head())
 
 if __name__ == "__main__":
     main()
