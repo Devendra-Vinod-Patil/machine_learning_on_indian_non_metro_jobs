@@ -1,111 +1,108 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import RFE
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
-# Simulated dataset creation
-def create_data():
+# Generate sample dataset based on notebook structure
+def create_sample_dataset():
     np.random.seed(42)
-    n = 500
-    data = {
-        'Experience': np.random.randint(0, 20, n),
-        'Education': np.random.choice(['High School', 'Bachelors', 'Masters', 'PhD'], n),
-        'Job Role': np.random.choice(['Developer', 'Data Scientist', 'Manager', 'Analyst'], n),
-        'City': np.random.choice(['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad'], n),
-        'Company Rating': np.round(np.random.uniform(2.5, 5.0, n), 1),
-    }
+    n = 1000
+    df = pd.DataFrame({
+        "Experience_Years": np.random.randint(0, 20, n),
+        "Company_Size": np.random.randint(10, 5000, n),
+        "City": np.random.choice(['Delhi', 'Bangalore', 'Pune', 'Jaipur'], n),
+        "Industry": np.random.choice(['IT', 'Finance', 'Healthcare', 'Education'], n),
+        "Job_Role": np.random.choice(['Data Analyst', 'ML Engineer', 'Web Developer', 'Manager'], n),
+        "Skill_Set": np.random.choice(['Python', 'SQL', 'Excel', 'Java'], n),
+        "Experience_Level": np.random.choice(['Fresher', 'Junior', 'Mid', 'Senior'], n)
+    })
 
-    df = pd.DataFrame(data)
+    # Generate salary based on logic
+    df['Salary'] = (
+        20000 +
+        df['Experience_Years'] * 1500 +
+        df['Company_Size'] * 2 +
+        df['Experience_Level'].map({'Fresher': 0, 'Junior': 5000, 'Mid': 10000, 'Senior': 15000}) +
+        df['Job_Role'].map({'Data Analyst': 5000, 'ML Engineer': 8000, 'Web Developer': 6000, 'Manager': 10000}) +
+        np.random.normal(0, 3000, n)
+    )
 
-    # Generate Salary with some logic
-    base_salary = 25000
-    df['Salary'] = base_salary + \
-                   df['Experience'] * 2000 + \
-                   df['Company Rating'] * 3000 + \
-                   df['Education'].map({
-                       'High School': 0,
-                       'Bachelors': 5000,
-                       'Masters': 10000,
-                       'PhD': 15000
-                   }) + \
-                   df['Job Role'].map({
-                       'Developer': 5000,
-                       'Data Scientist': 10000,
-                       'Manager': 8000,
-                       'Analyst': 6000
-                   }) + \
-                   np.random.normal(0, 2000, n)
     return df
 
-# Encode categorical columns
+# Preprocess: encode categorical columns
 def preprocess(df):
-    le = LabelEncoder()
-    df['Education'] = le.fit_transform(df['Education'])
-    df['Job Role'] = le.fit_transform(df['Job Role'])
-    df['City'] = le.fit_transform(df['City'])
-    return df
+    le_dict = {}
+    for col in df.select_dtypes(include='object').columns:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+        le_dict[col] = le
+    return df, le_dict
 
-# Train RFE + RF Model
+# Train RandomForest + RFE
 @st.cache_resource
 def train_model():
-    df = create_data()
-    df = preprocess(df)
+    df = create_sample_dataset()
+    df, le_dict = preprocess(df)
 
-    X = df.drop('Salary', axis=1)
-    y = df['Salary']
+    X = df.drop("Salary", axis=1)
+    y = df["Salary"]
 
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    rfe = RFE(estimator=model, n_features_to_select=4)
+    model = RandomForestRegressor(random_state=42)
+    rfe = RFE(model, n_features_to_select=5)
     rfe.fit(X, y)
 
     selected_features = X.columns[rfe.support_]
     model.fit(X[selected_features], y)
 
-    return model, selected_features, df
+    return model, selected_features, le_dict
 
-# Main Streamlit app
+# Main app logic
 def main():
     st.title("💼 Salary Prediction App (Random Forest + RFE)")
 
-    model, selected_features, df = train_model()
+    model, selected_features, le_dict = train_model()
 
-    st.sidebar.header("📋 Enter Candidate Details")
+    st.sidebar.header("📝 Enter Candidate Details")
 
     user_input = {}
 
-    if 'Experience' in selected_features:
-        user_input['Experience'] = st.sidebar.slider("Years of Experience", 0, 30, 2)
+    if "Experience_Years" in selected_features:
+        user_input["Experience_Years"] = st.sidebar.slider("Years of Experience", 0, 30, 2)
 
-    if 'Education' in selected_features:
-        education = st.sidebar.selectbox("Education Level", ['High School', 'Bachelors', 'Masters', 'PhD'])
-        user_input['Education'] = {'High School': 0, 'Bachelors': 1, 'Masters': 2, 'PhD': 3}[education]
+    if "Company_Size" in selected_features:
+        user_input["Company_Size"] = st.sidebar.slider("Company Size (Employees)", 10, 10000, 500)
 
-    if 'Job Role' in selected_features:
-        job_role = st.sidebar.selectbox("Job Role", ['Developer', 'Data Scientist', 'Manager', 'Analyst'])
-        user_input['Job Role'] = {'Developer': 0, 'Data Scientist': 1, 'Manager': 2, 'Analyst': 3}[job_role]
+    if "City" in selected_features:
+        city = st.sidebar.selectbox("City", le_dict["City"].classes_)
+        user_input["City"] = le_dict["City"].transform([city])[0]
 
-    if 'City' in selected_features:
-        city = st.sidebar.selectbox("City", ['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad'])
-        user_input['City'] = {'Delhi': 0, 'Mumbai': 1, 'Bangalore': 2, 'Hyderabad': 3}[city]
+    if "Industry" in selected_features:
+        industry = st.sidebar.selectbox("Industry", le_dict["Industry"].classes_)
+        user_input["Industry"] = le_dict["Industry"].transform([industry])[0]
 
-    if 'Company Rating' in selected_features:
-        user_input['Company Rating'] = st.sidebar.slider("Company Rating", 2.5, 5.0, 4.0, step=0.1)
+    if "Job_Role" in selected_features:
+        role = st.sidebar.selectbox("Job Role", le_dict["Job_Role"].classes_)
+        user_input["Job_Role"] = le_dict["Job_Role"].transform([role])[0]
 
-    # Convert input to dataframe
+    if "Skill_Set" in selected_features:
+        skill = st.sidebar.selectbox("Skill Set", le_dict["Skill_Set"].classes_)
+        user_input["Skill_Set"] = le_dict["Skill_Set"].transform([skill])[0]
+
+    if "Experience_Level" in selected_features:
+        level = st.sidebar.selectbox("Experience Level", le_dict["Experience_Level"].classes_)
+        user_input["Experience_Level"] = le_dict["Experience_Level"].transform([level])[0]
+
     input_df = pd.DataFrame([user_input])
 
-    st.subheader("🧪 Selected Features for Prediction")
+    st.subheader("✅ Selected Features Used by Model")
     st.write(selected_features.tolist())
 
-    if st.button("Predict Salary 💰"):
+    if st.button("💰 Predict Salary"):
         prediction = model.predict(input_df[selected_features])[0]
-        st.success(f"💸 Estimated Salary: ₹{int(prediction):,}")
-
-    st.subheader("📊 Sample of Training Data")
-    st.write(df.head())
+        st.success(f"Estimated Salary: ₹ {int(prediction):,}")
 
 if __name__ == "__main__":
     main()
