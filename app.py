@@ -6,7 +6,7 @@ import numpy as np
 # Load model and RFE transformer
 @st.cache_resource
 def load_artifacts():
-    model = joblib.load("final_model.pkl")
+    model = joblib.load("model.pkl")
     rfe = joblib.load("rfe.pkl")
     feature_names = joblib.load("feature_names.pkl")  # original X_train.columns
     return model, rfe, feature_names
@@ -51,3 +51,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
