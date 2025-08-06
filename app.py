@@ -1,54 +1,73 @@
 import streamlit as st
 import pandas as pd
-import joblib
 import numpy as np
+import time
+from sklearn.datasets import fetch_california_housing
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.feature_selection import RFE
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
 
-# Load model and RFE transformer
-@st.cache_resource
-def load_artifacts():
-    model = joblib.load("model.pkl")
-    rfe = joblib.load("rfe.pkl")
-    feature_names = joblib.load("feature_names.pkl")  # original X_train.columns
-    return model, rfe, feature_names
+st.set_page_config(page_title="RFE + Random Forest", layout="wide")
 
-# App layout
+def load_data():
+    data = fetch_california_housing(as_frame=True)
+    X = data.data
+    y = data.target
+    return X, y, X.columns.tolist()
+
 def main():
-    st.set_page_config(page_title="RFE + Random Forest Prediction", layout="wide")
-    st.title("📊 ML Prediction using RFE + Random Forest")
-
+    st.title("🏡 California Housing Price Prediction with RFE + Random Forest")
     st.markdown("""
-        Upload a dataset matching the **original feature columns** before RFE was applied.
-        The model will apply RFE transformation and then make predictions.
+    This app demonstrates **Recursive Feature Elimination (RFE)** with a **Random Forest Regressor**  
+    using the built-in California Housing dataset.
     """)
 
-    model, rfe, feature_names = load_artifacts()
+    # Load dataset
+    X, y, all_columns = load_data()
+    st.write(f"Dataset shape: {X.shape}")
 
-    uploaded_file = st.file_uploader("📁 Upload CSV file", type=["csv"])
+    with st.expander("📊 Preview Dataset"):
+        st.dataframe(X.head())
 
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
+    # Sidebar for number of features
+    st.sidebar.header("🔧 RFE Settings")
+    n_features = st.sidebar.slider("Select number of features to keep", min_value=1, max_value=len(all_columns), value=5)
 
-            missing_cols = [col for col in feature_names if col not in df.columns]
-            if missing_cols:
-                st.error(f"❌ Missing columns in uploaded data: {missing_cols}")
-                return
+    # 1. Split the data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-            X_input = df[feature_names]
-            X_rfe = rfe.transform(X_input)
+    # 2. RFE setup
+    base_model = RandomForestRegressor(n_estimators=10, max_depth=5, random_state=42, n_jobs=-1)
+    rfe = RFE(estimator=base_model, n_features_to_select=n_features, step=1)
 
-            preds = model.predict(X_rfe)
+    st.info("Running RFE...")
+    start = time.time()
+    rfe.fit(X_train, y_train)
+    end = time.time()
+    st.success(f"✅ RFE completed in {end - start:.2f} seconds")
 
-            df["Prediction"] = preds
-            st.success("✅ Predictions generated successfully!")
-            st.dataframe(df)
+    # 3. Transform the data
+    X_train_rfe = rfe.transform(X_train)
+    X_test_rfe = rfe.transform(X_test)
 
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Results", csv, "predictions.csv", "text/csv")
+    # 4. Final model
+    final_model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
+    final_model.fit(X_train_rfe, y_train)
+    y_pred = final_model.predict(X_test_rfe)
 
-        except Exception as e:
-            st.error(f"⚠️ Error: {e}")
+    # 5. Evaluation
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    st.subheader("📈 Model Evaluation")
+    st.write(f"**Mean Squared Error (MSE):** `{mse:.4f}`")
+    st.write(f"**R² Score:** `{r2:.4f}`")
+
+    # 6. Display selected features
+    selected_features = X.columns[rfe.support_]
+    st.subheader("🔍 Selected Features by RFE")
+    st.write(selected_features.tolist())
 
 if __name__ == "__main__":
     main()
-
