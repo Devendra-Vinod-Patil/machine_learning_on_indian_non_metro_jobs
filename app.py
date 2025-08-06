@@ -3,14 +3,15 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import RFE
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 SKILL_OPTIONS = ['Python', 'SQL', 'Excel', 'Java']
 
-# Generate sample dataset
+# Generate synthetic dataset
 def create_sample_dataset():
     np.random.seed(42)
-    n = 1000
+    n = 5000  # Increased dataset size for better model accuracy
     df = pd.DataFrame({
         "Experience_Years": np.random.randint(0, 20, n),
         "Company_Size": np.random.randint(10, 5000, n),
@@ -20,29 +21,29 @@ def create_sample_dataset():
         "Experience_Level": np.random.choice(['Fresher', 'Junior', 'Mid', 'Senior'], n),
     })
 
-    # Add multi-skill columns (binary flags)
+    # Add skill columns as binary flags
     for skill in SKILL_OPTIONS:
         df[f"Skill_{skill}"] = np.random.choice([0, 1], n)
 
-    # Base salary logic
+    # Calculate Salary with logic
     df['Salary'] = (
         20000 +
-        df['Experience_Years'] * 1500 +
-        df['Company_Size'] * 2 +
+        df['Experience_Years'] * 1800 +
+        df['Company_Size'] * 2.5 +
         df['Experience_Level'].map({'Fresher': 0, 'Junior': 5000, 'Mid': 10000, 'Senior': 15000}) +
-        df['Job_Role'].map({'Data Analyst': 5000, 'ML Engineer': 8000, 'Web Developer': 6000, 'Manager': 10000}) +
-        df[[f"Skill_{s}" for s in SKILL_OPTIONS]].sum(axis=1) * 2000 +
-        np.random.normal(0, 3000, n)
+        df['Job_Role'].map({'Data Analyst': 5000, 'ML Engineer': 9000, 'Web Developer': 6000, 'Manager': 12000}) +
+        df[[f"Skill_{s}" for s in SKILL_OPTIONS]].sum(axis=1) * 2500 +
+        np.random.normal(0, 2000, n)
     )
 
     return df
 
-# Encode categorical values
+# Encode categorical columns
 def preprocess(df):
     le_dict = {}
     for col in ['City', 'Industry', 'Job_Role', 'Experience_Level']:
-        df[col], le = pd.factorize(df[col])
-        le_dict[col] = le
+        df[col], uniques = pd.factorize(df[col])
+        le_dict[col] = uniques
     return df, le_dict
 
 @st.cache_resource
@@ -53,8 +54,8 @@ def train_model():
     X = df.drop("Salary", axis=1)
     y = df["Salary"]
 
-    model = RandomForestRegressor(random_state=42)
-    rfe = RFE(model, n_features_to_select=6)
+    model = RandomForestRegressor(n_estimators=200, max_depth=15, min_samples_leaf=4, random_state=42)
+    rfe = RFE(estimator=model, n_features_to_select=6)
     rfe.fit(X, y)
 
     selected_features = X.columns[rfe.support_]
@@ -62,9 +63,8 @@ def train_model():
 
     return model, selected_features, le_dict
 
-# Main app
 def main():
-    st.title("💼 Salary Prediction App (Multi-Skill + RFE + RF)")
+    st.title("💼 Salary Prediction App (Improved RF + RFE)")
 
     model, selected_features, le_dict = train_model()
 
@@ -75,7 +75,7 @@ def main():
         user_input["Experience_Years"] = st.sidebar.slider("Years of Experience", 0, 30, 2)
 
     if "Company_Size" in selected_features:
-        user_input["Company_Size"] = st.sidebar.slider("Company Size", 10, 10000, 500)
+        user_input["Company_Size"] = st.sidebar.number_input("Company Size (Number of Employees)", min_value=10, max_value=10000, value=100)
 
     if "City" in selected_features:
         city = st.sidebar.selectbox("City", le_dict["City"])
@@ -100,7 +100,7 @@ def main():
 
     input_df = pd.DataFrame([user_input])
 
-    st.subheader("✅ Selected Features Used by Model")
+    st.subheader("📌 Selected Features Used in Model")
     st.write(selected_features.tolist())
 
     if st.button("💰 Predict Salary"):
