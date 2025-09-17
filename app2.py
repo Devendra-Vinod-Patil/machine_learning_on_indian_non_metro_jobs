@@ -15,7 +15,7 @@ with open(os.path.join(base_path, "feature_names.pkl"), "rb") as f:
 with open(os.path.join(base_path, "rfe.pkl"), "rb") as f:
     rfe = pickle.load(f)
 
-with open(os.path.join(base_path, "model.pkl"), "rb") as f:
+with open(os.path.join(base_path, "final_model.pkl"), "rb") as f:
     model = pickle.load(f)
 
 # =========================
@@ -44,4 +44,3 @@ input_transformed = rfe.transform(input_array)
 if st.button("Predict"):
     prediction = model.predict(input_transformed)
     st.success(f"✅ Predicted Value: {prediction[0]}")
-
